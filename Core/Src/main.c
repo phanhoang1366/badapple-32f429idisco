@@ -31,9 +31,11 @@
 #include "stm32f429i_discovery_lcd.h"
 #include "stm32f4xx.h"
 
+#include "config.h"
 #include "frame_sizes.h"
 #include "stm32f4xx_hal_dac.h"
 #include "adpcm.h"
+#include "video_seek.h"
 
 static const
 #include "video_data.h"
@@ -122,19 +124,16 @@ uint8_t lyric_displayed[2] = {NO_EVENT, NO_EVENT};
 uint16_t buffer_samples[BUFFER_SIZE];
 unsigned int adpcm_data_index = 0;
 
-/* ADPCM state snapshots for seeking (every 1 second = 2400 bytes) */
-#define ADPCM_STATE_SAVE_INTERVAL 2400  // 6 * 400 bytes per second
-#define MAX_ADPCM_STATES 60  // Support up to ~60 seconds of video
-static ADPCM_State adpcm_states[MAX_ADPCM_STATES];
-static uint8_t adpcm_state_count = 0;
+/* Global ADPCM state buffer for seeking */
+ADPCM_StateBuffer adpcm_buffer = {0};
+
 
 /* Seeking variables */
-#define SEEK_STEP_FRAMES 200  // Frames per seek button (roughly 1-5 seconds depending on video)
 static volatile bool is_seeking = false;
-static int16_t seek_delta = 0;  // Accumulate seek steps
+static int16_t seek_delta = 0;  // Accumulate seek steps //
 
 RectButton btns[5] = {
-	{10, 250, 50, 30, "<<"},      // Seek backward
+	{10, 250, 50, 30, "<<"},      // Seek backward //
 	{65, 250, 50, 30, "Play"},
 	{120, 250, 50, 30, ">>"},     // Seek forward
 	{175, 250, 50, 30, "Lyric"},
@@ -168,21 +167,18 @@ void handle_button_press(uint16_t x, uint16_t y);
   */
 void save_adpcm_state_snapshot(void)
 {
-  if (adpcm_state_count < MAX_ADPCM_STATES) {
-    ADPCM_GetState(&adpcm_states[adpcm_state_count]);
-    adpcm_state_count++;
-  }
+  uint16_t snapshot_idx = adpcm_data_index / ADPCM_STATE_SAVE_INTERVAL;
+  
+  ADPCM_SaveSnapshot(&adpcm_buffer, snapshot_idx);
 }
 
 /**
   * @brief Seek to ADPCM state at snapshot index
-  * @param snapshot_index: Index into adpcm_states array (0-based)
+  * @param snapshot_index: Index into adpcm_buffer.states array (0-based)
   */
 void seek_to_adpcm_state(uint16_t snapshot_index)
 {
-  if (snapshot_index < adpcm_state_count) {
-    ADPCM_SetState(&adpcm_states[snapshot_index]);
-  }
+  ADPCM_RestoreSnapshot(&adpcm_buffer, snapshot_index);
 }
 
 /**
@@ -279,28 +275,9 @@ bool seek_to_frame(uint16_t target_frame)
     return false;
   }
 
-  /* Calculate which ADPCM snapshot to restore */
-  /* Each snapshot represents 2400 bytes of audio data */
-  /* We need to figure out how many bytes of ADPCM data correspond to target_frame */
-  
-  /* Simple approach: estimate based on average frame size and frame rate */
-  /* Adjust this calculation based on your actual audio/video sync */
-  uint16_t estimated_seconds = (target_frame * ADPCM_STATE_SAVE_INTERVAL) / (num_frames / 60);  // Assume 60fps-ish
-  uint16_t snapshot_index = estimated_seconds;
-  
-  if (snapshot_index >= adpcm_state_count) {
-    snapshot_index = adpcm_state_count > 0 ? adpcm_state_count - 1 : 0;
-  }
-
-  /* Restore ADPCM state from nearest snapshot */
-  if (adpcm_state_count > 0) {
-    seek_to_adpcm_state(snapshot_index);
-    adpcm_data_index = snapshot_index * ADPCM_STATE_SAVE_INTERVAL;
-  } else {
-    /* No snapshots yet - reset to initial state */
-    ADPCM_State init_state = {0, 0};
-    ADPCM_SetState(&init_state);
-    adpcm_data_index = 0;
+  /* Delegate ADPCM state restoration to video_seek module */
+  if (!video_seek_to_frame(target_frame, &adpcm_buffer)) {
+    return false;
   }
 
   /* Update frame position */
@@ -481,6 +458,9 @@ int main(void)
   HAL_DACEx_ConvHalfCpltCallbackCh2(&hdac);
 
   BSP_LED_Off(LED4); /* init complete, clear RED LED */
+
+  /* Initialize ADPCM buffer */
+  ADPCM_InitBuffer(&adpcm_buffer);
 
   int current_event = 0;
 

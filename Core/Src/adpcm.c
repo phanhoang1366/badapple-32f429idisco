@@ -21,6 +21,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "adpcm.h"
+#include "config.h"
 
 /* Private define ------------------------------------------------------------*/
 /* Quantizer step size lookup table */
@@ -40,9 +41,167 @@ const int8_t IndexTable[16]={0xff,0xff,0xff,0xff,2,4,6,8,0xff,0xff,0xff,0xff,2,4
 /* Private variables ---------------------------------------------------------*/
 static int16_t  adpcm_index = 0;
 static int32_t adpcm_predsample = 0;
+static ADPCM_StateBuffer adpcm_buffer = {0};
 
 /* Private function prototypes -----------------------------------------------*/
+static void disable_interrupts(void);
+static void enable_interrupts(void);
+
 /* Private functions ---------------------------------------------------------*/
+
+/**
+  * @brief Disable interrupts (thread-safe operation)
+  * @retval None
+  */
+static void disable_interrupts(void)
+{
+  __disable_irq();
+}
+
+/**
+  * @brief Enable interrupts
+  * @retval None
+  */
+static void enable_interrupts(void)
+{
+  __enable_irq();
+}
+
+/* ========== VALIDATION FUNCTIONS ========== */
+
+/**
+  * @brief Validate ADPCM state values
+  * @param state: pointer to ADPCM_State
+  * @retval ADPCM_Error_t: ADPCM_OK or error code
+  */
+ADPCM_Error_t ADPCM_ValidateState(const ADPCM_State *state)
+{
+  if (state == NULL) {
+    DBG_AUDIO("ERROR: NULL state pointer");
+    return ADPCM_ERR_NULL_POINTER;
+  }
+  
+  if (state->index < 0 || state->index > 88) {
+    DBG_AUDIO("ERROR: Invalid index %d (must be 0-88)", state->index);
+    return ADPCM_ERR_INVALID_INDEX;
+  }
+  
+  /* Predicted sample should be within int16 range */
+  if (state->predsample > 32767 || state->predsample < -32768) {
+    DBG_AUDIO("ERROR: Invalid predsample %ld", state->predsample);
+    return ADPCM_ERR_OUT_OF_BOUNDS;
+  }
+  
+  return ADPCM_OK;
+}
+
+/**
+  * @brief Validate snapshot index
+  * @param index: snapshot index
+  * @retval ADPCM_Error_t: ADPCM_OK or error code
+  */
+ADPCM_Error_t ADPCM_ValidateSnapshotIndex(uint16_t index)
+{
+  if (index >= ADPCM_SNAPSHOT_COUNT) {
+    DBG_AUDIO("ERROR: Snapshot index %d exceeds max %d", index, ADPCM_SNAPSHOT_COUNT - 1);
+    return ADPCM_ERR_OUT_OF_BOUNDS;
+  }
+  return ADPCM_OK;
+}
+
+/* ========== BUFFER MANAGEMENT FUNCTIONS ========== */
+
+/**
+  * @brief Initialize ADPCM state buffer
+  * @param buffer: pointer to ADPCM_StateBuffer
+  * @retval None
+  */
+void ADPCM_InitBuffer(ADPCM_StateBuffer *buffer)
+{
+  if (buffer == NULL) return;
+  
+  memset(buffer->states, 0, sizeof(buffer->states));
+  buffer->total_snapshots = 0;
+  buffer->last_save_byte_count = 0;
+  
+  DBG_MEM("ADPCM Buffer initialized (max %d snapshots, %u bytes)", 
+          ADPCM_SNAPSHOT_COUNT, TOTAL_ADPCM_BUFFER_SIZE);
+}
+
+/**
+  * @brief Save ADPCM state snapshot
+  * @param buffer: pointer to ADPCM_StateBuffer
+  * @param snapshot_index: index to save
+  * @retval ADPCM_Error_t
+  */
+ADPCM_Error_t ADPCM_SaveSnapshot(ADPCM_StateBuffer *buffer, uint16_t snapshot_index)
+{
+  ADPCM_Error_t err = ADPCM_ValidateSnapshotIndex(snapshot_index);
+  if (err != ADPCM_OK) return err;
+  
+  if (buffer == NULL) return ADPCM_ERR_NULL_POINTER;
+  
+  ADPCM_State current_state;
+  ADPCM_GetState(&current_state);
+  
+  /* Thread-safe save */
+  disable_interrupts();
+  buffer->states[snapshot_index] = current_state;
+  if (snapshot_index >= buffer->total_snapshots) {
+    buffer->total_snapshots = snapshot_index + 1;
+  }
+  enable_interrupts();
+  
+  DBG_AUDIO("Saved snapshot [%d]: index=%d, predsample=%ld", 
+            snapshot_index, current_state.index, current_state.predsample);
+  
+  return ADPCM_OK;
+}
+
+/**
+  * @brief Restore ADPCM state from snapshot
+  * @param buffer: pointer to ADPCM_StateBuffer
+  * @param snapshot_index: index to restore
+  * @retval ADPCM_Error_t
+  */
+ADPCM_Error_t ADPCM_RestoreSnapshot(ADPCM_StateBuffer *buffer, uint16_t snapshot_index)
+{
+  ADPCM_Error_t err = ADPCM_ValidateSnapshotIndex(snapshot_index);
+  if (err != ADPCM_OK) return err;
+  
+  if (buffer == NULL) return ADPCM_ERR_NULL_POINTER;
+  
+  if (snapshot_index >= buffer->total_snapshots) {
+    DBG_AUDIO("ERROR: Snapshot %d not yet saved (max saved: %d)", 
+              snapshot_index, buffer->total_snapshots - 1);
+    return ADPCM_ERR_OUT_OF_BOUNDS;
+  }
+  
+  /* Thread-safe restore */
+  disable_interrupts();
+  err = ADPCM_SetState(&buffer->states[snapshot_index]);
+  enable_interrupts();
+  
+  if (err == ADPCM_OK) {
+    DBG_AUDIO("Restored snapshot [%d]: index=%d, predsample=%ld", 
+              snapshot_index, 
+              buffer->states[snapshot_index].index,
+              buffer->states[snapshot_index].predsample);
+  }
+  
+  return err;
+}
+
+/**
+  * @brief Get total snapshots saved
+  * @param buffer: pointer to ADPCM_StateBuffer
+  * @retval uint16_t: number of snapshots
+  */
+uint16_t ADPCM_GetTotalSnapshots(const ADPCM_StateBuffer *buffer)
+{
+  if (buffer == NULL) return 0;
+  return buffer->total_snapshots;
+}
 
 
 /**
@@ -244,6 +403,8 @@ void ADPCM_SetState(const ADPCM_State *state)
   */
 void ADPCM_GetState(ADPCM_State *state)
 {
+  if (state == NULL) return;
+  
   state->index = adpcm_index;
   state->predsample = adpcm_predsample;
 }
@@ -251,12 +412,17 @@ void ADPCM_GetState(ADPCM_State *state)
 /**
   * @brief  ADPCM_SetState - Restore decoder state
   * @param state: pointer to ADPCM_State struct with saved state
-  * @retval None
+  * @retval ADPCM_Error_t: ADPCM_OK or error code
   */
-void ADPCM_SetState(const ADPCM_State *state)
+ADPCM_Error_t ADPCM_SetState(const ADPCM_State *state)
 {
+  ADPCM_Error_t err = ADPCM_ValidateState(state);
+  if (err != ADPCM_OK) return err;
+  
   adpcm_index = state->index;
   adpcm_predsample = state->predsample;
+  
+  return ADPCM_OK;
 }
 
 
