@@ -369,40 +369,6 @@ int16_t ADPCM_Decode(uint8_t code)
   */
 void ADPCM_GetState(ADPCM_State *state)
 {
-  // These are accessed from ADPCM_Decode, but we need to make them accessible
-  // This is a helper to save state before seek
-  extern int16_t adpcm_index;
-  extern int32_t adpcm_predsample;
-  
-  state->index = adpcm_index;
-  state->predsample = adpcm_predsample;
-}
-
-/**
-  * @brief  ADPCM_SetState - Restore decoder state
-  * @param state: pointer to ADPCM_State struct with saved state
-  * @retval None
-  */
-void ADPCM_SetState(const ADPCM_State *state)
-{
-  extern int16_t adpcm_index;
-  extern int32_t adpcm_predsample;
-  
-  adpcm_index = state->index;
-  adpcm_predsample = state->predsample;
-}
-
-/**
-  * @}
-  */ 
-
-/**
-  * @brief  ADPCM_GetState - Get current decoder state
-  * @param state: pointer to ADPCM_State struct to store state
-  * @retval None
-  */
-void ADPCM_GetState(ADPCM_State *state)
-{
   if (state == NULL) return;
   
   state->index = adpcm_index;
@@ -424,6 +390,5 @@ ADPCM_Error_t ADPCM_SetState(const ADPCM_State *state)
   
   return ADPCM_OK;
 }
-
 
 /******************* (C) COPYRIGHT 2009 STMicroelectronics *****END OF FILE****/

@@ -508,7 +508,6 @@ int main(void)
             frame_offset = 0;
             lyric_idx = 0;
             adpcm_data_index = 0;
-            adpcm_state_count = 0;
         }
 
         // Handle lyric display
