@@ -38,6 +38,9 @@ const int8_t IndexTable[16]={0xff,0xff,0xff,0xff,2,4,6,8,0xff,0xff,0xff,0xff,2,4
 
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
+static int16_t  adpcm_index = 0;
+static int32_t adpcm_predsample = 0;
+
 /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
 
@@ -49,18 +52,16 @@ const int8_t IndexTable[16]={0xff,0xff,0xff,0xff,2,4,6,8,0xff,0xff,0xff,0xff,2,4
   */
 uint8_t ADPCM_Encode(int32_t sample)
 {
-  static int16_t  index = 0;
-  static int32_t predsample = 0;
   uint8_t code=0;
   uint16_t tmpstep=0;
   int32_t diff=0;
   int32_t diffq=0;
   uint16_t step=0;
   
-  step = StepSizeTable[index];
+  step = StepSizeTable[adpcm_index];
 
   /* 2. compute diff and record sign and absolut value */
-  diff = sample-predsample;
+  diff = sample-adpcm_predsample;
   if (diff < 0)  
   {
     code=8;
@@ -99,33 +100,33 @@ uint8_t ADPCM_Encode(int32_t sample)
   /* 5. fixed predictor to get new predicted sample*/
   if (code & 8)
   {
-    predsample -= diffq;
+    adpcm_predsample -= diffq;
   }
   else
   {
-    predsample += diffq;
+    adpcm_predsample += diffq;
   }  
 
   /* check for overflow*/
-  if (predsample > 32767)
+  if (adpcm_predsample > 32767)
   {
-    predsample = 32767;
+    adpcm_predsample = 32767;
   }
-  else if (predsample < -32768)
+  else if (adpcm_predsample < -32768)
   {
-    predsample = -32768;
+    adpcm_predsample = -32768;
   }
   
   /* 6. find new stepsize index */
-  index += IndexTable[code];
+  adpcm_index += IndexTable[code];
   /* check for overflow*/
-  if (index <0)
+  if (adpcm_index <0)
   {
-    index = 0;
+    adpcm_index = 0;
   }
-  else if (index > 88)
+  else if (adpcm_index > 88)
   {
-    index = 88;
+    adpcm_index = 88;
   }
   
   /* 8. return new ADPCM code*/
@@ -141,12 +142,10 @@ uint8_t ADPCM_Encode(int32_t sample)
   */
 int16_t ADPCM_Decode(uint8_t code)
 {
-  static int16_t  index = 0;
-  static int32_t predsample = 0;
   uint16_t step=0;
   int32_t diffq=0;
   
-  step = StepSizeTable[index];
+  step = StepSizeTable[adpcm_index];
 
   /* 2. inverse code into diff */
   diffq = step>> 3;
@@ -168,45 +167,97 @@ int16_t ADPCM_Decode(uint8_t code)
   /* 3. add diff to predicted sample*/
   if (code&8)
   {
-    predsample -= diffq;
+    adpcm_predsample -= diffq;
   }
   else
   {
-    predsample += diffq;
+    adpcm_predsample += diffq;
   }
   
   /* check for overflow*/
-  if (predsample > 32767)
+  if (adpcm_predsample > 32767)
   {
-    predsample = 32767;
+    adpcm_predsample = 32767;
   }
-  else if (predsample < -32768)
+  else if (adpcm_predsample < -32768)
   {
-    predsample = -32768;
+    adpcm_predsample = -32768;
   }
 
   /* 4. find new quantizer step size */
-  index += IndexTable [code];
+  adpcm_index += IndexTable [code];
   /* check for overflow*/
-  if (index < 0)
+  if (adpcm_index < 0)
   {
-    index = 0;
+    adpcm_index = 0;
   }
-  if (index > 88)
+  if (adpcm_index > 88)
   {
-    index = 88;
+    adpcm_index = 88;
   }
   
   /* 5. save predict sample and index for next iteration */
   /* done! static variables */
   
   /* 6. return new speech sample*/
-  return ((int16_t)predsample);
+  return ((int16_t)adpcm_predsample);
+}
+
+/**
+  * @brief  ADPCM_GetState - Get current decoder state
+  * @param state: pointer to ADPCM_State struct to store state
+  * @retval None
+  */
+void ADPCM_GetState(ADPCM_State *state)
+{
+  // These are accessed from ADPCM_Decode, but we need to make them accessible
+  // This is a helper to save state before seek
+  extern int16_t adpcm_index;
+  extern int32_t adpcm_predsample;
+  
+  state->index = adpcm_index;
+  state->predsample = adpcm_predsample;
+}
+
+/**
+  * @brief  ADPCM_SetState - Restore decoder state
+  * @param state: pointer to ADPCM_State struct with saved state
+  * @retval None
+  */
+void ADPCM_SetState(const ADPCM_State *state)
+{
+  extern int16_t adpcm_index;
+  extern int32_t adpcm_predsample;
+  
+  adpcm_index = state->index;
+  adpcm_predsample = state->predsample;
 }
 
 /**
   * @}
   */ 
+
+/**
+  * @brief  ADPCM_GetState - Get current decoder state
+  * @param state: pointer to ADPCM_State struct to store state
+  * @retval None
+  */
+void ADPCM_GetState(ADPCM_State *state)
+{
+  state->index = adpcm_index;
+  state->predsample = adpcm_predsample;
+}
+
+/**
+  * @brief  ADPCM_SetState - Restore decoder state
+  * @param state: pointer to ADPCM_State struct with saved state
+  * @retval None
+  */
+void ADPCM_SetState(const ADPCM_State *state)
+{
+  adpcm_index = state->index;
+  adpcm_predsample = state->predsample;
+}
 
 
 /******************* (C) COPYRIGHT 2009 STMicroelectronics *****END OF FILE****/

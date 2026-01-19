@@ -28,11 +28,18 @@
 
 
 /* Exported types ------------------------------------------------------------*/
+typedef struct {
+  int16_t index;      // Current quantizer step index (0-88)
+  int32_t predsample; // Current predicted sample value
+} ADPCM_State;
+
 /* Exported constants --------------------------------------------------------*/
 /* Exported macro ------------------------------------------------------------*/
 /* Exported functions ------------------------------------------------------- */
 uint8_t ADPCM_Encode(int32_t sample);
 int16_t ADPCM_Decode(uint8_t code);
+void ADPCM_GetState(ADPCM_State *state);
+void ADPCM_SetState(const ADPCM_State *state);
 
 #endif /* __ADPCM_H*/
 /******************* (C) COPYRIGHT 2009 STMicroelectronics *****END OF FILE****/
