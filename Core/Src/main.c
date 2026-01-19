@@ -18,6 +18,9 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "../../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_rcc.h"
+#include "../../Drivers/CMSIS/Device/ST/STM32F4xx/Include/stm32f4xx.h"
+#include "../Inc/video_data.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -140,6 +143,9 @@ RectButton btns[5] = {
 	{230, 250, 10, 30, "M"}       // Mute (abbreviated)
 };
 
+/* Precompute frame offsets for faster seeking */
+static uint32_t frame_offsets[VIDEO_TOTAL_FRAMES] = {0};
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -157,6 +163,8 @@ void clear_lyric_area(void);
 void save_adpcm_state_snapshot(void);
 void seek_to_adpcm_state(uint16_t snapshot_index);
 void handle_button_press(uint16_t x, uint16_t y);
+void precompute_frame_offsets(void);
+void check_av_sync(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -251,17 +259,22 @@ void draw_ui_buttons(void)
 }
 
 /**
+  * @brief Precompute frame offsets for faster seeking
+  */
+void precompute_frame_offsets(void) {
+    for (uint16_t i = 1; i < num_frames; i++) {
+        frame_offsets[i] = frame_offsets[i - 1] + frame_sizes[i - 1];
+    }
+}
+
+/**
   * @brief Calculate frame offset from frame counter
   * @param frame_num: Target frame number (0-based)
   * @retval Byte offset in video_data_bin
   */
 uint32_t calculate_frame_offset(uint16_t frame_num)
 {
-  uint32_t offset = 0;
-  for (uint16_t i = 0; i < frame_num && i < num_frames; i++) {
-    offset += frame_sizes[i];
-  }
-  return offset;
+  return frame_offsets[frame_num];
 }
 
 /**
@@ -316,6 +329,17 @@ void seek_backward(uint16_t frame_delta)
 }
 
 /**
+  * @brief Seek forward or backward by frame_delta (unified function)
+  * @param frame_delta: Number of frames to seek (can be negative)
+  */
+void seek_relative(int16_t frame_delta) {
+    int16_t target = (int16_t)frame_counter + frame_delta;
+    if (target < 0) target = 0;
+    if (target >= num_frames) target = num_frames - 1;
+    seek_to_frame((uint16_t)target);
+}
+
+/**
   * @brief Draw progress bar and time indicator
   * Shows current position and total duration
   */
@@ -363,6 +387,17 @@ void draw_time_display(uint16_t x, uint16_t y)
   BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
 }
 
+/**
+  * @brief Check audio-video synchronization
+  */
+void check_av_sync(void) {
+    if (adpcm_data_index / AUDIO_BYTES_PER_FRAME != frame_counter) {
+        DBG_SYNC("Desync detected: frame=%d, audio_frame=%d",
+                 frame_counter, adpcm_data_index / AUDIO_BYTES_PER_FRAME);
+        // Restore synchronization
+        adpcm_data_index = frame_counter * AUDIO_BYTES_PER_FRAME;
+    }
+}
 /* USER CODE END 0 */
 
 /**
@@ -466,6 +501,9 @@ int main(void)
 
   // Make audio ready
   HAL_DAC_Start_DMA(&hdac, DAC_CHANNEL_2, (uint32_t*)buffer_samples, BUFFER_SIZE, DAC_ALIGN_12B_R);
+  
+  /* Precompute frame offsets */
+  precompute_frame_offsets();
   
   /* USER CODE END 2 */
 
