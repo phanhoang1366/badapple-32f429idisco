@@ -49,6 +49,7 @@ volatile bool playing_state = true;
 static uint32_t frame_accum = 0;
 volatile bool seeking_in_progress = false;
 
+extern uint16_t num_frames;
 extern bool lyric_toggle;
 extern uint16_t frame_counter;
 extern uint8_t lyric_idx;
@@ -253,7 +254,41 @@ void EXTI3_IRQHandler(void)
   /* USER CODE END EXTI3_IRQn 0 */
   HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_3);
   /* USER CODE BEGIN EXTI3_IRQn 1 */
+  // Set seeking flag and pause playback
+  seeking_in_progress = true;
+  bool was_playing = playing_state;
+  playing_state = false;
 
+  // Stop DMA audio to avoid desynchronization
+  HAL_DAC_Stop_DMA(&hdac, DAC_CHANNEL_2);
+
+  // Fast-forward 5 seconds
+  float current_time = frame_counter / 15.0f; // 15 FPS
+  float new_time = current_time + 5.0f; // Add 5 seconds
+  if (new_time > (num_frames / 15.0f))
+  {
+      new_time = num_frames / 15.0f;
+  }
+
+  // Convert time to frame number
+  uint16_t new_frame = (uint16_t)(new_time * 15.0f);
+  new_frame = (new_frame / 15) * 15; // Align to nearest K-frame
+
+  // Update frame counter
+  frame_counter = new_frame;
+
+  // Update lyric index
+  lyric_idx = find_lyric_index_for_frame(new_frame);
+
+  // Reset ADPCM decoder state
+  reset_adpcm_state(new_time);
+
+  // Restart DMA audio from the new position
+  HAL_DAC_Start_DMA(&hdac, DAC_CHANNEL_2, (uint32_t*)buffer_samples, BUFFER_SIZE, DAC_ALIGN_12B_R);
+
+  // Restore playback state
+  seeking_in_progress = false;
+  playing_state = was_playing;
   /* USER CODE END EXTI3_IRQn 1 */
 }
 
