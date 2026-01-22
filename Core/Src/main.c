@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -37,10 +38,12 @@ static const
 #include "video_data.h"
 
 static const
-#include "audio_data.h" // ADPCM, not used in this example
+#include "audio_data.h"
 
 static const
 #include "lyrics.h"
+
+#include "adpcm_states.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -92,6 +95,8 @@ DMA_HandleTypeDef hdma_dac2;
 
 TIM_HandleTypeDef htim6;
 
+UART_HandleTypeDef huart1;
+
 /* USER CODE BEGIN PV */
 DMA2D_HandleTypeDef hdma2d;
 LTDC_HandleTypeDef hltdc;
@@ -126,6 +131,8 @@ RectButton btns[3] = {
 	{150, 250, 60, 30, "Mute"}
 };
 
+uint32_t last_ms = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -134,6 +141,7 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_DAC_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void screen_flip_buffers(void);
 uint8_t find_active_event(uint16_t frame_number);
@@ -179,6 +187,7 @@ int main(void)
   MX_DMA_Init();
   MX_TIM6_Init();
   MX_DAC_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   if (HAL_TIM_Base_Start_IT(&htim6) != HAL_OK) {
       Error_Handler();
@@ -237,6 +246,7 @@ int main(void)
   HAL_DACEx_ConvHalfCpltCallbackCh2(&hdac);
 
   BSP_LED_Off(LED4); /* init complete, clear RED LED */
+  last_ms = HAL_GetTick();
 
   int current_event = 0;
 
@@ -272,9 +282,12 @@ int main(void)
         frame_counter++;
         if (frame_counter >= num_frames)
         {
-            frame_counter = 0;
-            frame_offset = 0;
-            lyric_idx = 0;
+            // frame_counter = 0;
+            // frame_offset = 0;
+            // lyric_idx = 0;
+            // Let's not loop for this demo
+            playing_state = false;
+            continue;
         }
 
         // Handle lyric display
@@ -421,7 +434,7 @@ static void MX_TIM6_Init(void)
   {
     Error_Handler();
   }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim6, &sMasterConfig) != HAL_OK)
   {
@@ -430,6 +443,39 @@ static void MX_TIM6_Init(void)
   /* USER CODE BEGIN TIM6_Init 2 */
 
   /* USER CODE END TIM6_Init 2 */
+
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
 
 }
 
@@ -462,8 +508,15 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+
+  /*Configure GPIO pins : PE2 PE3 PE4 PE5 */
+  GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PA0 */
   GPIO_InitStruct.Pin = GPIO_PIN_0;
@@ -474,6 +527,18 @@ static void MX_GPIO_Init(void)
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI2_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI4_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -498,6 +563,10 @@ uint8_t find_active_event(uint16_t frame_number)
     while (lyric_idx < lyric_count &&
             frame_number >= lyric_events[lyric_idx].end_frame) {
         lyric_idx++;
+    }
+
+    if (lyric_toggle) {
+        return NO_EVENT;
     }
 
     if (lyric_idx < lyric_count &&
@@ -656,9 +725,37 @@ void fill_range(int start, int end)
     }
 }
 
+void fill_blank_range(int start, int end)
+{
+    for (int i = start; i < end; i++)
+    {
+        buffer_samples[i] = DAC_MID;
+    }
+}
+
+extern int16_t a_index;
+extern int32_t predsample;
+
+void print_debugging_info() 
+{
+  uint32_t current_ms = HAL_GetTick();
+  if (current_ms - last_ms >= 1000)
+  {
+    char msg[100];
+    int len = snprintf(msg, sizeof(msg), "ADPCM index: %d, PredSample: %ld\r\n", a_index, predsample);
+    HAL_UART_Transmit(&huart1, (uint8_t *)msg, len, HAL_MAX_DELAY);
+    last_ms = current_ms;
+  }
+}
+
 void HAL_DACEx_ConvCpltCallbackCh2(DAC_HandleTypeDef *hdac)
 {
+  if (!playing_state) fill_blank_range(0, BUFFER_SIZE);
+  else 
+  {
     fill_range(0, BUFFER_SIZE);
+    // print_debugging_info();
+  }
 }
 
 /* USER CODE END 4 */

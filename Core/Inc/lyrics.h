@@ -1,7 +1,7 @@
 #ifndef LYRICS_H
 #define LYRICS_H
 
-const char lyrics_romaji[][40] = {
+char lyrics_romaji[][40] = {
     // Verse
     "Nagareteku toki no naka de demo",
     "Kedarusa ga hora guruguru mawatte",

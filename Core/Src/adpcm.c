@@ -42,97 +42,110 @@ const int8_t IndexTable[16]={0xff,0xff,0xff,0xff,2,4,6,8,0xff,0xff,0xff,0xff,2,4
 /* Private functions ---------------------------------------------------------*/
 
 
+// /**
+//   * @brief  ADPCM_Encode.
+//   * @param sample: a 16-bit PCM sample
+//   * @retval : a 4-bit ADPCM sample
+//   */
+// uint8_t ADPCM_Encode(int32_t sample)
+// {
+//   static int16_t  index = 0;
+//   static int32_t predsample = 0;
+//   uint8_t code=0;
+//   uint16_t tmpstep=0;
+//   int32_t diff=0;
+//   int32_t diffq=0;
+//   uint16_t step=0;
+  
+//   step = StepSizeTable[index];
+
+//   /* 2. compute diff and record sign and absolut value */
+//   diff = sample-predsample;
+//   if (diff < 0)  
+//   {
+//     code=8;
+//     diff = -diff;
+//   }    
+  
+//   /* 3. quantize the diff into ADPCM code */
+//   /* 4. inverse quantize the code into a predicted diff */
+//   tmpstep = step;
+//   diffq = (step >> 3);
+
+//   if (diff >= tmpstep)
+//   {
+//     code |= 0x04;
+//     diff -= tmpstep;
+//     diffq += step;
+//   }
+  
+//   tmpstep = tmpstep >> 1;
+
+//   if (diff >= tmpstep)
+//   {
+//     code |= 0x02;
+//     diff -= tmpstep;
+//     diffq+=(step >> 1);
+//   }
+  
+//   tmpstep = tmpstep >> 1;
+  
+//   if (diff >= tmpstep)
+//   {
+//     code |=0x01;
+//     diffq+=(step >> 2);
+//   }
+  
+//   /* 5. fixed predictor to get new predicted sample*/
+//   if (code & 8)
+//   {
+//     predsample -= diffq;
+//   }
+//   else
+//   {
+//     predsample += diffq;
+//   }  
+
+//   /* check for overflow*/
+//   if (predsample > 32767)
+//   {
+//     predsample = 32767;
+//   }
+//   else if (predsample < -32768)
+//   {
+//     predsample = -32768;
+//   }
+  
+//   /* 6. find new stepsize index */
+//   index += IndexTable[code];
+//   /* check for overflow*/
+//   if (index <0)
+//   {
+//     index = 0;
+//   }
+//   else if (index > 88)
+//   {
+//     index = 88;
+//   }
+  
+//   /* 8. return new ADPCM code*/
+//   return (code & 0x0f);
+// }
+
+int16_t a_index = 0;
+int32_t predsample = 0;
+
 /**
-  * @brief  ADPCM_Encode.
-  * @param sample: a 16-bit PCM sample
-  * @retval : a 4-bit ADPCM sample
+  * @brief  ADPCM_SetState.
+  * @param init_index: initial index value
+  * @param init_predsample: initial predicted sample value
+  * @retval : None
   */
-uint8_t ADPCM_Encode(int32_t sample)
+void ADPCM_SetState(int16_t init_index, int32_t init_predsample)
 {
-  static int16_t  index = 0;
-  static int32_t predsample = 0;
-  uint8_t code=0;
-  uint16_t tmpstep=0;
-  int32_t diff=0;
-  int32_t diffq=0;
-  uint16_t step=0;
-  
-  step = StepSizeTable[index];
-
-  /* 2. compute diff and record sign and absolut value */
-  diff = sample-predsample;
-  if (diff < 0)  
-  {
-    code=8;
-    diff = -diff;
-  }    
-  
-  /* 3. quantize the diff into ADPCM code */
-  /* 4. inverse quantize the code into a predicted diff */
-  tmpstep = step;
-  diffq = (step >> 3);
-
-  if (diff >= tmpstep)
-  {
-    code |= 0x04;
-    diff -= tmpstep;
-    diffq += step;
-  }
-  
-  tmpstep = tmpstep >> 1;
-
-  if (diff >= tmpstep)
-  {
-    code |= 0x02;
-    diff -= tmpstep;
-    diffq+=(step >> 1);
-  }
-  
-  tmpstep = tmpstep >> 1;
-  
-  if (diff >= tmpstep)
-  {
-    code |=0x01;
-    diffq+=(step >> 2);
-  }
-  
-  /* 5. fixed predictor to get new predicted sample*/
-  if (code & 8)
-  {
-    predsample -= diffq;
-  }
-  else
-  {
-    predsample += diffq;
-  }  
-
-  /* check for overflow*/
-  if (predsample > 32767)
-  {
-    predsample = 32767;
-  }
-  else if (predsample < -32768)
-  {
-    predsample = -32768;
-  }
-  
-  /* 6. find new stepsize index */
-  index += IndexTable[code];
-  /* check for overflow*/
-  if (index <0)
-  {
-    index = 0;
-  }
-  else if (index > 88)
-  {
-    index = 88;
-  }
-  
-  /* 8. return new ADPCM code*/
-  return (code & 0x0f);
+  a_index = init_index;
+  predsample = init_predsample;
 }
-
-
 
 /**
   * @brief  ADPCM_Decode.
@@ -141,12 +154,12 @@ uint8_t ADPCM_Encode(int32_t sample)
   */
 int16_t ADPCM_Decode(uint8_t code)
 {
-  static int16_t  index = 0;
-  static int32_t predsample = 0;
+  // static int16_t  index = 0;
+  // static int32_t predsample = 0;
   uint16_t step=0;
   int32_t diffq=0;
   
-  step = StepSizeTable[index];
+  step = StepSizeTable[a_index];
 
   /* 2. inverse code into diff */
   diffq = step>> 3;
@@ -186,19 +199,20 @@ int16_t ADPCM_Decode(uint8_t code)
   }
 
   /* 4. find new quantizer step size */
-  index += IndexTable [code];
+  a_index += IndexTable [code];
   /* check for overflow*/
-  if (index < 0)
+  if (a_index < 0)
   {
-    index = 0;
+    a_index = 0;
   }
-  if (index > 88)
+  if (a_index > 88)
   {
-    index = 88;
+    a_index = 88;
   }
   
   /* 5. save predict sample and index for next iteration */
   /* done! static variables */
+  /* well, actually, we use global variables now */
   
   /* 6. return new speech sample*/
   return ((int16_t)predsample);

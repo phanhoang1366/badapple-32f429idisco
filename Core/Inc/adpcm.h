@@ -31,7 +31,7 @@
 /* Exported constants --------------------------------------------------------*/
 /* Exported macro ------------------------------------------------------------*/
 /* Exported functions ------------------------------------------------------- */
-uint8_t ADPCM_Encode(int32_t sample);
+// uint8_t ADPCM_Encode(int32_t sample);
 int16_t ADPCM_Decode(uint8_t code);
 
 #endif /* __ADPCM_H*/
