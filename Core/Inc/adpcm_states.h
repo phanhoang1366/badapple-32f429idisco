@@ -8,6 +8,7 @@ typedef struct {
 
 static const ADPCMState saved_states[] =
 {
+    {0, 0},
     {2, 111},
     {40, 285},
     {66, 5732},

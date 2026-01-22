@@ -132,8 +132,8 @@ const int8_t IndexTable[16]={0xff,0xff,0xff,0xff,2,4,6,8,0xff,0xff,0xff,0xff,2,4
 //   return (code & 0x0f);
 // }
 
-int16_t a_index = 0;
-int32_t predsample = 0;
+// int16_t a_index = 0;
+// int32_t predsample = 0;
 
 /**
   * @brief  ADPCM_SetState.

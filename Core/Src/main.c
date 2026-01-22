@@ -31,7 +31,10 @@
 #include "stm32f429i_discovery_lcd.h"
 #include "stm32f4xx.h"
 
-#include "frame_sizes.h"
+// #include "frame_sizes.h"
+static const
+#include "frame_offset.h"
+
 #include "stm32f4xx_hal_dac.h"
 
 static const
@@ -108,9 +111,12 @@ static uint32_t* g_fb[2];
 
 extern bool framebuffer_ready;
 
+int16_t a_index = 0;
+int32_t predsample = 0;
+
 uint16_t frame_counter = 0;
-uint32_t frame_offset = 0;
-uint16_t num_frames = sizeof(frame_sizes) / sizeof(frame_sizes[0]);
+// uint32_t frame_offset = 0;
+uint16_t num_frames = sizeof(frame_offset) / sizeof(frame_offset[0]);
 
 uint8_t lyric_idx = 0;
 uint8_t lyric_count = sizeof(lyric_events) / sizeof(lyric_events[0]);
@@ -119,6 +125,7 @@ static TS_StateTypeDef  TS_State;
 extern volatile bool playing_state;
 
 bool lyric_toggle = true;
+extern volatile bool seeking_in_progress;
 // 2 variables for 2 different framebuffer lyric display states
 uint8_t lyric_displayed[2] = {NO_EVENT, NO_EVENT};
 
@@ -148,6 +155,8 @@ uint8_t find_active_event(uint16_t frame_number);
 void draw_video_frame(const uint8_t* frame_data);
 void LCD_DisplayWrappedText(uint16_t x, uint16_t y, char *text);
 void clear_lyric_area(void);
+uint8_t find_lyric_index_for_frame(uint16_t frame_number);
+void reset_adpcm_state(float time_seconds);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -259,7 +268,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    if (framebuffer_ready)
+    if (framebuffer_ready && !seeking_in_progress)
     {
         framebuffer_ready = false;
 
@@ -274,12 +283,7 @@ int main(void)
         if (!playing_state) {
             continue;
         }
-
-        const uint8_t* frame_data = &video_data_bin[frame_offset];
-        draw_video_frame(frame_data);
-
-        frame_offset += frame_sizes[frame_counter];
-        frame_counter++;
+        
         if (frame_counter >= num_frames)
         {
             // frame_counter = 0;
@@ -290,6 +294,12 @@ int main(void)
             continue;
         }
 
+        const uint8_t* frame_data = &video_data_bin[frame_offset[frame_counter]];
+        draw_video_frame(frame_data);
+
+        // frame_offset += frame_sizes[frame_counter];
+        frame_counter++;
+        
         // Handle lyric display
         current_event = find_active_event(frame_counter);
 
@@ -733,8 +743,58 @@ void fill_blank_range(int start, int end)
     }
 }
 
-extern int16_t a_index;
-extern int32_t predsample;
+/**
+  * @brief  Find the lyric index for a given frame number
+  * @param  frame_number: The target frame number
+  * @retval Lyric index (0 to lyric_count-1) or NO_EVENT if not found
+  */
+uint8_t find_lyric_index_for_frame(uint16_t frame_number)
+{
+    // Find the event that contains this frame
+    for (uint8_t i = 0; i < lyric_count; i++)
+    {
+        if (frame_number >= lyric_events[i].start_frame && 
+            frame_number < lyric_events[i].end_frame)
+        {
+            return i;
+        }
+        // If we've passed the frame, return the previous event if it exists
+        if (frame_number < lyric_events[i].start_frame)
+        {
+            return (i > 0) ? (i - 1) : 0;
+        }
+    }
+    // If beyond all events, return last event index
+    return (lyric_count > 0) ? (lyric_count - 1) : 0;
+}
+
+/**
+  * @brief  Reset ADPCM decoder state based on time
+  * @param  time_seconds: Time in seconds to seek to
+  * @retval None
+  */
+void reset_adpcm_state(float time_seconds)
+{
+    // Calculate the audio data index (2048 samples per second)
+    unsigned int target_index = (unsigned int)(time_seconds * 2048.0f);
+    
+    // Each saved state corresponds to 2048 samples
+    unsigned int state_index = target_index / 2048;
+    
+    // Limit to available saved states
+    unsigned int num_states = sizeof(saved_states) / sizeof(saved_states[0]);
+    if (state_index >= num_states)
+    {
+        state_index = num_states - 1;
+    }
+    
+    // Restore the ADPCM state
+    a_index = saved_states[state_index].index;
+    predsample = saved_states[state_index].predsample;
+    
+    // Set the audio data index
+    adpcm_data_index = state_index * 2048;
+}
 
 void print_debugging_info() 
 {

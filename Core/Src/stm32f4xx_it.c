@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdbool.h>
+#include <stdint.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -32,7 +33,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define BUFFER_SIZE 256
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -46,8 +47,16 @@ volatile int tim6_counter = 0;
 volatile bool framebuffer_ready = false;
 volatile bool playing_state = true;
 static uint32_t frame_accum = 0;
+volatile bool seeking_in_progress = false;
 
 extern bool lyric_toggle;
+extern uint16_t frame_counter;
+extern uint8_t lyric_idx;
+extern uint8_t lyric_displayed[2];
+extern unsigned int adpcm_data_index;
+extern uint8_t find_lyric_index_for_frame(uint16_t frame_number);
+extern void reset_adpcm_state(float time_seconds);
+extern uint16_t buffer_samples[BUFFER_SIZE];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -258,7 +267,49 @@ void EXTI4_IRQHandler(void)
   /* USER CODE END EXTI4_IRQn 0 */
   HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_4);
   /* USER CODE BEGIN EXTI4_IRQn 1 */
-
+  // Set seeking flag and pause playback
+  seeking_in_progress = true;
+  bool was_playing = playing_state;
+  playing_state = false;
+  
+  // Stop audio DMA to prevent desync
+  HAL_DAC_Stop_DMA(&hdac, DAC_CHANNEL_2);
+  
+  // Rewind 5 seconds
+  // Calculate current time in seconds (15 fps)
+  float current_time = frame_counter / 15.0f;
+  
+  // Subtract 5 seconds, but don't go below 0
+  float new_time = current_time - 5.0f;
+  if (new_time < 0.0f)
+  {
+      new_time = 0.0f;
+  }
+  
+  // Convert back to frame number (round down to ensure k-frame)
+  uint16_t new_frame = (uint16_t)(new_time * 15.0f);
+  // Align to nearest k-frame (every 15 frames starting at 0)
+  new_frame = (new_frame / 15) * 15;
+  
+  // Update frame counter
+  frame_counter = new_frame;
+  
+  // Find and update lyric index
+  lyric_idx = find_lyric_index_for_frame(new_frame);
+  
+  // Reset lyric display state to force refresh
+  // lyric_displayed[0] = 0xFF;
+  // lyric_displayed[1] = 0xFF; No, this will case the lyric to sometimes stay when rewinding to a non-lyric frame
+  
+  // Reset ADPCM decoder state
+  reset_adpcm_state(new_time);
+  
+  // Restart audio DMA from new position
+  HAL_DAC_Start_DMA(&hdac, DAC_CHANNEL_2, (uint32_t*)buffer_samples, BUFFER_SIZE, DAC_ALIGN_12B_R);
+  
+  // Clear seeking flag and restore playback state
+  seeking_in_progress = false;
+  playing_state = was_playing;
   /* USER CODE END EXTI4_IRQn 1 */
 }
 

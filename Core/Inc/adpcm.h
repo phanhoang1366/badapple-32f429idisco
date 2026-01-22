@@ -30,6 +30,10 @@
 /* Exported types ------------------------------------------------------------*/
 /* Exported constants --------------------------------------------------------*/
 /* Exported macro ------------------------------------------------------------*/
+/* Exported variables --------------------------------------------------------*/
+extern int16_t a_index;
+extern int32_t predsample;
+
 /* Exported functions ------------------------------------------------------- */
 // uint8_t ADPCM_Encode(int32_t sample);
 int16_t ADPCM_Decode(uint8_t code);
