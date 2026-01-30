@@ -4,6 +4,8 @@
 
 This project implements the iconic "Bad Apple!!" animation on the STM32F429I-DISC1 development board. The animation is displayed on the onboard LCD screen, showcasing the capabilities of the STM32F4 series microcontroller.
 
+![IMG_0900_comp](https://github.com/user-attachments/assets/c089c4a7-4a08-4d95-8248-2419e20599e4)
+
 ### Team and member's roles
 
 Team name: NoMMU

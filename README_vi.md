@@ -4,6 +4,8 @@
 
 Dự án này triển khai hoạt hình "Bad Apple!!" nổi tiếng trên bo mạch phát triển STM32F429I-DISC1. Hoạt hình được hiển thị trên màn hình LCD tích hợp, thể hiện khả năng của vi điều khiển dòng STM32F4.
 
+![IMG_0900_comp](https://github.com/user-attachments/assets/c089c4a7-4a08-4d95-8248-2419e20599e4)
+
 ### Nhóm và vai trò thành viên
 
 Tên nhóm: NoMMU
