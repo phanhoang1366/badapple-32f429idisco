@@ -6,6 +6,10 @@ Dự án này triển khai hoạt hình "Bad Apple!!" nổi tiếng trên bo m�
 
 ![IMG_0900_comp](https://github.com/user-attachments/assets/c089c4a7-4a08-4d95-8248-2419e20599e4)
 
+Demo video:
+
+https://github.com/user-attachments/assets/06768816-4203-49fd-be7e-e0a58a8c6333
+
 ### Nhóm và vai trò thành viên
 
 Tên nhóm: NoMMU
